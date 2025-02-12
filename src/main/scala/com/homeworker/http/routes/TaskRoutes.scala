@@ -14,7 +14,7 @@ import org.http4s.server.AuthMiddleware
 import io.circe.{Encoder, Decoder}
 import io.circe.syntax.*
 
-class TaskRoutes(taskService: TaskService):
+class TaskRoutes(taskService: TaskService) extends RouteInfo:
   private val logger = LoggerFactory.getLogger(getClass)
 
   // Add JSON encoders/decoders for LocalDateTime with ISO format
@@ -25,7 +25,7 @@ class TaskRoutes(taskService: TaskService):
     }
   }
 
-  def routes: AuthedRoutes[Long, IO] = AuthedRoutes.of {
+  def routes: AuthedRoutes[Long, IO] = AuthedRoutes.of[Long, IO] {
     case authReq @ POST -> Root / "tasks" as userId =>
       (for
         createReq <- authReq.req.as[CreateTaskRequest]
@@ -53,13 +53,24 @@ class TaskRoutes(taskService: TaskService):
         InternalServerError(ErrorResponse(error.getMessage))
       }
 
-    case PUT -> Root / "tasks" / LongVar(taskId) / "status" / status as _ =>
-      val taskStatus = TaskStatus.valueOf(status)
-      for
-        progress <- taskService.updateTaskStatus(taskId, taskStatus)
-        resp <- Ok(progress)
-      yield resp
+    case authReq @ PATCH -> Root / "tasks" / LongVar(taskId) / "status" as userId =>
+      (for
+        updateReq <- authReq.req.as[UpdateTaskStatusRequest]
+        _ = logger.info(s"Updating task $taskId status to ${updateReq.status}")
+        task <- taskService.updateTaskStatus(taskId, userId, updateReq.status)
+        resp <- Ok(task)
+      yield resp).handleErrorWith { error =>
+        logger.error("Error updating task status:", error)
+        InternalServerError(ErrorResponse(error.getMessage))
+      }
   }
+
+  override def routeDescription: List[String] = List(
+    "├── /tasks",
+    "│   ├── GET / - List all tasks",
+    "│   ├── POST / - Create a new task",
+    "│   └── PATCH /{id}/status - Update task status"
+  )
 
   final case class CreateTaskRequest(
     title: String,
@@ -67,4 +78,8 @@ class TaskRoutes(taskService: TaskService):
     category: String,
     points: Int,
     dueDate: LocalDateTime
+  )
+
+  final case class UpdateTaskStatusRequest(
+    status: TaskStatus
   ) 

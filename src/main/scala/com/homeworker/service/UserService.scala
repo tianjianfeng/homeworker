@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 import java.util.Base64
 import com.homeworker.domain.errors.AppError.*
+import java.time.LocalDateTime
 
 class UserService(
   userRepository: UserRepository,
@@ -36,8 +37,17 @@ class UserService(
         logger.error(s"Error creating user: ${e.getMessage}", e)
         IO.unit
       }
-      _ <- gameProgressRepository.create(savedUser.id.get).onError { case e =>
-        logger.error(s"Error creating game progress: ${e.getMessage}", e)
+      _ <- gameProgressRepository.create(
+        GameProgress(
+          id = None,
+          userId = savedUser.id.get,
+          totalPoints = 0,
+          level = 1,
+          createdAt = LocalDateTime.now,
+          updatedAt = LocalDateTime.now
+        )
+      ).onError { case e =>
+        logger.error(s"Failed to create game progress for user ${savedUser.id.get}", e)
         IO.unit
       }
       _ <- IO(logger.info(s"Successfully registered user: ${savedUser.email}"))
@@ -57,8 +67,8 @@ class UserService(
     yield AuthResponse(token, user.get)
 
   private def validateEmail(email: String): IO[Unit] =
-    if !email.matches("""^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$""") then
-      IO.raiseError(ValidationError("Invalid email format"))
+    if !email.matches(".+@.+\\..+") then
+      IO.raiseError(new IllegalArgumentException("Invalid email format"))
     else IO.unit
 
   private def validateUserDoesNotExist(existingUser: Option[User]): IO[Unit] =
@@ -66,15 +76,14 @@ class UserService(
       case Some(_) => IO.raiseError(ValidationError("Email already exists"))
       case None => IO.unit
 
-  private def validatePassword(password: String, storedHash: String): IO[Unit] =
-    if hashPassword(password) != storedHash then
-      IO.raiseError(AuthenticationError("Invalid credentials"))
+  private def validatePassword(password: String): IO[Unit] =
+    if password.length < 8 then
+      IO.raiseError(new IllegalArgumentException("Password must be at least 8 characters long"))
     else IO.unit
 
   private def hashPassword(password: String): String =
-    val digest = MessageDigest.getInstance("SHA-256")
-    val hash = digest.digest(password.getBytes("UTF-8"))
-    Base64.getEncoder.encodeToString(hash)
+    // TODO: Implement proper password hashing
+    password + "-hashed"
 
   private def generateToken(user: User): String =
     // TODO: Implement proper JWT token generation

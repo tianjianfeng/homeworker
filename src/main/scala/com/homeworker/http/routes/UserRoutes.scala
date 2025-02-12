@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory
 import io.circe.{Decoder, Encoder}
 import io.circe.syntax.*
 
-class UserRoutes(userService: UserService):
+class UserRoutes(userService: UserService) extends RouteInfo:
   private val logger = LoggerFactory.getLogger(getClass)
 
   // Add JSON encoders for UserRole
@@ -22,7 +22,7 @@ class UserRoutes(userService: UserService):
       Left(s"Invalid user role: $str. Valid values are: ${UserRole.values.mkString(", ")}")
   }
 
-  val routes = HttpRoutes.of[IO] {
+  def routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case req @ POST -> Root / "users" / "register" =>
       (for
         registerReq <- req.as[RegisterRequest]
@@ -45,6 +45,12 @@ class UserRoutes(userService: UserService):
         InternalServerError(ErrorResponse(error.getMessage))
       }
   }
+
+  def routeDescription: List[String] = List(
+    "├── /users",
+    "│   ├── POST /register - Register a new user",
+    "│   └── POST /login - User login"
+  )
 
   case class RegisterRequest(email: String, password: String, role: UserRole)
   case class LoginRequest(email: String, password: String) 

@@ -19,6 +19,11 @@ import org.slf4j.LoggerFactory
 object Main extends IOApp:
   private val logger = LoggerFactory.getLogger(getClass)
 
+  private def logRoutes(prefix: String = "", depth: Int = 0): Unit =
+    val indent = "│   " * depth
+    val branch = if depth == 0 then "" else if prefix.contains("/") then "├── " else "└── "
+    logger.info(s"$indent$branch$prefix")
+
   def run(args: List[String]): IO[ExitCode] =
     for
       _ <- IO.println("Starting Homeworker Backend...")
@@ -40,22 +45,25 @@ object Main extends IOApp:
         val authMiddleware = Auth.middleware(userService)
 
         // Routes
-        val userRoutes = new UserRoutes(userService).routes
-        val taskRoutes = new TaskRoutes(taskService).routes
-        val gameRoutes = new GameRoutes(gameService).routes
-        val healthRoutes = new HealthRoutes(xa).routes
+        val userRoutes = new UserRoutes(userService)
+        val taskRoutes = new TaskRoutes(taskService)
+        val gameRoutes = new GameRoutes(gameService)
+        val healthRoutes = new HealthRoutes(xa)
 
-        // Combine routes
+        // Debug print to verify routes are being combined
+        logger.info("Initializing routes...")
+        logger.info("Game routes initialized")
+
+        // Combine routes - FIXED ORDER
         val apiRoutes = ErrorHandler.handle(
-          userRoutes <+>
-          authMiddleware(taskRoutes) <+>
-          authMiddleware(gameRoutes)
+          userRoutes.routes <+>
+          authMiddleware(gameRoutes.routes <+> taskRoutes.routes)
         )
 
         val httpApp = Router(
           "/api" -> RateLimiter.middleware(Metrics.middleware(apiRoutes)),
           "/docs" -> ApiDocs.routes,
-          "/" -> healthRoutes
+          "/" -> healthRoutes.routes
         ).orNotFound
 
         val finalHttpApp = Logger.httpApp(true, true)(httpApp)

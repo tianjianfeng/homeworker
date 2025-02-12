@@ -37,13 +37,27 @@ class TaskService(
   def getUserTasks(userId: Long): IO[List[Task]] =
     taskRepo.findByUserId(userId)
 
-  def updateTaskStatus(taskId: Long, status: TaskStatus): IO[Task] =
+  def updateTaskStatus(taskId: Long, userId: Long, status: TaskStatus): IO[Task] =
     for
-      task <- taskRepo.updateStatus(taskId, status)
-      _ <- status match
-        case TaskStatus.Done => gameProgressRepo.updateProgress(task.userId, task.points)
-        case _ => IO.unit
-    yield task
+      task <- taskRepo.findById(taskId).flatMap {
+        case Some(t) if t.userId == userId => IO.pure(t)
+        case Some(_) => IO.raiseError(new IllegalArgumentException("Task belongs to another user"))
+        case None => IO.raiseError(new IllegalArgumentException("Task not found"))
+      }
+      updatedTask = task.copy(status = status, updatedAt = LocalDateTime.now)
+      saved <- taskRepo.update(updatedTask)
+      _ <- if status == TaskStatus.Done then
+        gameProgressRepo.findByUserId(userId).flatMap {
+          case Some(progress) =>
+            val updatedProgress = progress.copy(
+              totalPoints = progress.totalPoints + task.points,
+              level = (progress.totalPoints + task.points) / 100 + 1
+            )
+            gameProgressRepo.update(updatedProgress)
+          case None => IO.unit
+        }
+      else IO.unit
+    yield saved
 
   def validateField(fieldName: String, value: String): IO[Unit] =
     if value.isEmpty then

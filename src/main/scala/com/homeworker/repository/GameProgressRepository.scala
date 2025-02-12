@@ -4,9 +4,10 @@ import cats.effect.IO
 import doobie.*
 import doobie.implicits.*
 import doobie.postgres.implicits.*
-import com.homeworker.domain.*
+import com.homeworker.domain.GameProgress
 import com.homeworker.domain.DoobieMeta.given
 import org.slf4j.LoggerFactory
+import java.time.LocalDateTime
 
 class GameProgressRepository(val xa: Transactor[IO]) extends Repository[IO, GameProgress]:
   private val logger = LoggerFactory.getLogger(getClass)
@@ -32,26 +33,26 @@ class GameProgressRepository(val xa: Transactor[IO]) extends Repository[IO, Game
       RETURNING id, user_id, level, total_points, created_at, updated_at
     """.query[GameProgress].unique.transact(xa)
 
-  def create(userId: Long): IO[GameProgress] =
+  def create(progress: GameProgress): IO[GameProgress] =
     sql"""
-      INSERT INTO game_progress (user_id, level, total_points)
-      VALUES ($userId, 1, 0)
-      RETURNING id, user_id, level, total_points, created_at, updated_at
+      INSERT INTO game_progress (user_id, total_points, level, created_at, updated_at)
+      VALUES (${progress.userId}, ${progress.totalPoints}, ${progress.level}, ${progress.createdAt}, ${progress.updatedAt})
+      RETURNING id, user_id, total_points, level, created_at, updated_at
     """.query[GameProgress].unique.transact(xa)
 
   def update(progress: GameProgress): IO[GameProgress] =
     sql"""
       UPDATE game_progress
-      SET level = ${progress.level},
-          total_points = ${progress.totalPoints},
-          updated_at = CURRENT_TIMESTAMP
-      WHERE user_id = ${progress.userId}
-      RETURNING id, user_id, level, total_points, created_at, updated_at
+      SET total_points = ${progress.totalPoints},
+          level = ${progress.level},
+          updated_at = ${progress.updatedAt}
+      WHERE id = ${progress.id}
+      RETURNING id, user_id, total_points, level, created_at, updated_at
     """.query[GameProgress].unique.transact(xa)
 
   def findByUserId(userId: Long): IO[Option[GameProgress]] =
     sql"""
-      SELECT id, user_id, level, total_points, created_at, updated_at
+      SELECT id, user_id, total_points, level, created_at, updated_at
       FROM game_progress
       WHERE user_id = $userId
     """.query[GameProgress].option.transact(xa) 
